@@ -1,3 +1,3 @@
 def test():
   print("there")
-  return 1
+  return 3
