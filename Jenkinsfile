@@ -49,16 +49,18 @@ pipeline {
                         CLUSTER_NAME="project1-hadoop-cluster"
                         BUCKET_NAME="${PROJECT_ID}-hadoop-repo-data"
 
-                        echo "Uploading to GCS..."
+                        echo "Creating bucket (if not exists)..."
                         gcloud storage buckets create gs://$BUCKET_NAME --project=$PROJECT_ID --location=$REGION || true
-                        gsutil -m rsync -r -x '\\.git/.*' . gs://$BUCKET_NAME/repo_files/
 
-                        echo "Submitting job..."
-                        gcloud dataproc jobs submit pyspark mapreduce_line_count.py \
+                        echo "Uploading PySpark script..."
+                        gsutil cp mapreduce_line_count.py gs://$BUCKET_NAME/mapreduce_line_count.py
+
+                        echo "Submitting Hadoop job..."
+                        gcloud dataproc jobs submit pyspark gs://$BUCKET_NAME/mapreduce_line_count.py \
                             --cluster=$CLUSTER_NAME \
                             --region=$REGION \
                             --project=$PROJECT_ID \
-                            -- gs://$BUCKET_NAME/repo_files
+                            -- https://github.com/haotiany-cmu-F25/mayavi.git
                     '''
                 }
             }
