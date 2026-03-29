@@ -33,10 +33,23 @@ pipeline {
             }
         }
 
-        // 👇 新增：Hadoop 部署阶段的占位符
         stage('Deploy to Hadoop (Dataproc)') {
             steps {
-                echo "这里将执行 gcloud dataproc jobs submit 命令..."
+                script {
+                    echo "开始部署任务到 Dataproc..."
+                    
+                    // 1. 临时下载并安装 gcloud 工具 (静默安装)
+                    sh '''
+                        curl -sSL https://sdk.cloud.google.com | bash > /dev/null
+                        export PATH=$PATH:/home/jenkins/google-cloud-sdk/bin
+                        
+                        # 2. 提交 Pyspark 任务到集群
+                        # ⚠️ 请把下面的 YOUR_CLUSTER_NAME 和 YOUR_REGION 换成你真实的数据
+                        gcloud dataproc jobs submit pyspark run_analysis.py \
+                            --cluster=project1-hadoop-cluster \
+                            --region=us-central1
+                    '''
+                }
             }
         }
     }
