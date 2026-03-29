@@ -209,7 +209,7 @@ class WorkerPlugin(Plugin):
     # Services we contribute.
     service_offers = List(contributes_to=SERVICE_OFFERS)
     # Views.
-    my_views = List(contributes_to=VIEWS)
+    views = List(contributes_to=VIEWS)
 
     ######################################################################
     # Private methods.
