@@ -61,7 +61,7 @@ class ExplorerPlugin(Plugin):
     service_offers = List(contributes_to=SERVICE_OFFERS)
 
     # Views.
-    views = List(contributes_to=VIEWS)
+    my_views = List(contributes_to=VIEWS)
 
 
     ######################################################################
