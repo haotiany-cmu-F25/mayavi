@@ -20,6 +20,8 @@ if __name__ == "__main__":
     subprocess.run(["hdfs", "dfs", "-rm", "-r", "-f", hdfs_path])
     subprocess.run(["hdfs", "dfs", "-mkdir", "-p", hdfs_path])
 
+    # Collect all file relative paths for later
+    file_list = []
     for root, dirs, files in os.walk(clone_dir):
         dirs[:] = [d for d in dirs if d != ".git"]
         for fname in files:
@@ -33,24 +35,29 @@ if __name__ == "__main__":
             subprocess.run(
                 ["hdfs", "dfs", "-put", fpath, hdfs_dest], capture_output=True
             )
+            file_list.append(rel_path)
 
-    # Step 3: Use Spark to read from HDFS (distributed across 3 workers)
+    # Step 3: Use Spark to count lines distributed across workers
+    # Each file path becomes a task — workers read from HDFS independently
     sc = SparkContext(appName="RepoLineCount")
 
-    files_rdd = sc.wholeTextFiles(hdfs_path + "/*")
+    hdfs_base = hdfs_path
+    paths_rdd = sc.parallelize(file_list, numSlices=max(len(file_list) // 10, 3))
 
-    def count_lines(record):
-        filepath, content = record
-        # Extract relative path from HDFS URI
-        rel = (
-            filepath.split("/tmp/mayavi_repo/")[-1]
-            if "/tmp/mayavi_repo/" in filepath
-            else filepath
-        )
-        line_count = len(content.splitlines())
-        return '"{0}": {1}'.format(rel, line_count)
+    def count_lines_for_file(rel_path):
+        """Each worker reads one file from HDFS and counts its lines."""
+        import subprocess as sp
+        try:
+            result = sp.run(
+                ["hdfs", "dfs", "-cat", hdfs_base + "/" + rel_path],
+                capture_output=True, text=True, timeout=30
+            )
+            line_count = len(result.stdout.splitlines())
+        except Exception:
+            line_count = 0
+        return '"{0}": {1}'.format(rel_path, line_count)
 
-    results = files_rdd.map(count_lines).collect()
+    results = paths_rdd.map(count_lines_for_file).collect()
 
     print("\n" + "=" * 60)
     print("HADOOP MAPREDUCE RESULTS:")
@@ -58,6 +65,8 @@ if __name__ == "__main__":
     for res in sorted(results):
         print(res)
     print("=" * 60 + "\n")
+
+    sc.stop()
 
     sc.stop()
 
