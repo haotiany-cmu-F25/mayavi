@@ -60,7 +60,11 @@ pipeline {
                             --cluster=$CLUSTER_NAME \
                             --region=$REGION \
                             --project=$PROJECT_ID \
-                            -- https://github.com/haotiany-cmu-F25/mayavi.git
+                            -- https://github.com/haotiany-cmu-F25/mayavi.git gs://$BUCKET_NAME
+
+                        echo "Results saved to: gs://$BUCKET_NAME/hadoop_results.txt"
+                        echo "===== HADOOP RESULTS ====="
+                        gsutil cat gs://$BUCKET_NAME/hadoop_results.txt
                     '''
                 }
             }
