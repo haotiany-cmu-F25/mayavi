@@ -62,9 +62,10 @@ pipeline {
                             --project=$PROJECT_ID \
                             -- https://github.com/haotiany-cmu-F25/mayavi.git gs://$BUCKET_NAME
 
-                        echo "Results saved to: gs://$BUCKET_NAME/hadoop_results.txt"
-                        echo "===== HADOOP RESULTS ====="
-                        gsutil cat gs://$BUCKET_NAME/hadoop_results.txt
+                        echo "===== HADOOP JOB COMPLETE ====="
+                        echo "Results file: gs://$BUCKET_NAME/hadoop_results.txt"
+                        echo "View results: https://console.cloud.google.com/storage/browser/$BUCKET_NAME"
+                        echo "Or run: gsutil cat gs://$BUCKET_NAME/hadoop_results.txt"
                     '''
                 }
             }
