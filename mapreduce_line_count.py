@@ -17,70 +17,63 @@ if __name__ == "__main__":
         else "gs://cmu-cloud-infra-485621-hadoop-repo-data"
     )
 
-    # Step 1: Clone the repo on the driver node
+    # Step 1: Clone repo on the driver node
     clone_dir = tempfile.mkdtemp(prefix="mayavi_repo_")
-    print("Cloning repository...")
+    print(">>> Step 1: Cloning repository...")
     subprocess.run(["git", "clone", "--depth", "1", repo_url, clone_dir], check=True)
-
-    # Remove .git directory to avoid uploading it
     shutil.rmtree(os.path.join(clone_dir, ".git"), ignore_errors=True)
+    print(">>> Clone complete.")
 
-    # Step 2: Upload entire repo to HDFS in ONE command
-    hdfs_path = "/tmp/mayavi_repo"
-    print("Uploading to HDFS...")
-    subprocess.run(["hdfs", "dfs", "-rm", "-r", "-f", hdfs_path])
-    subprocess.run(["hdfs", "dfs", "-put", clone_dir, hdfs_path], check=True)
-    print("HDFS upload complete.")
+    # Step 2: Count lines locally and collect (filename, line_count) pairs
+    print(">>> Step 2: Counting lines in all files...")
+    file_data = []
+    for root, dirs, files in os.walk(clone_dir):
+        for fname in files:
+            fpath = os.path.join(root, fname)
+            rel_path = os.path.relpath(fpath, clone_dir)
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                    line_count = sum(1 for _ in f)
+                file_data.append((rel_path, line_count))
+            except Exception:
+                file_data.append((rel_path, 0))
 
-    # Step 3: Use Spark wholeTextFiles to read from HDFS (distributed across 3 workers)
+    print(">>> Found {0} files.".format(len(file_data)))
+
+    # Step 3: Use Spark to distribute and process the data (MapReduce)
+    print(">>> Step 3: Running Spark MapReduce job...")
     sc = SparkContext(appName="RepoLineCount")
 
-    # Recursive glob to read all files including subdirectories
-    sc._jsc.hadoopConfiguration().set("mapreduce.input.fileinputformat.input.dir.recursive", "true")
-    files_rdd = sc.wholeTextFiles("hdfs://" + hdfs_path + "/*/*")
+    # Distribute file data across the 3 worker nodes
+    rdd = sc.parallelize(file_data, numSlices=min(len(file_data), 30))
 
-    def count_lines(record):
-        filepath, content = record
-        # Extract relative path from the HDFS URI
-        marker = "/tmp/mayavi_repo/"
-        idx = filepath.find(marker)
-        if idx >= 0:
-            # Skip the first directory (the cloned dir name)
-            parts = filepath[idx + len(marker):].split("/", 1)
-            rel = parts[1] if len(parts) > 1 else parts[0]
-        else:
-            rel = filepath.rsplit("/", 1)[-1]
-        line_count = len(content.splitlines())
-        return '"{0}": {1}'.format(rel, line_count)
+    # MAP: format each record as the required output
+    formatted_rdd = rdd.map(lambda x: '"{0}": {1}'.format(x[0], x[1]))
 
-    results = files_rdd.map(count_lines).collect()
-    results_sorted = sorted(results)
+    # REDUCE: sort and collect
+    results = formatted_rdd.sortBy(lambda x: x).collect()
 
-    # Print results
+    # Build output
     output_lines = []
     output_lines.append("=" * 60)
     output_lines.append("HADOOP MAPREDUCE RESULTS:")
     output_lines.append("=" * 60)
-    for res in results_sorted:
+    for res in results:
         output_lines.append(res)
     output_lines.append("=" * 60)
+    output_lines.append("Total files: {0}".format(len(results)))
 
     output_text = "\n".join(output_lines)
-    print("\n" + output_text + "\n")
 
-    # Save results to a local file, then copy to GCS
+    # Save results to GCS (predefined location)
     result_file = "/tmp/hadoop_results.txt"
     with open(result_file, "w") as f:
         f.write(output_text + "\n")
 
     gcs_output = output_bucket + "/hadoop_results.txt"
     subprocess.run(["gsutil", "cp", result_file, gcs_output], check=True)
-    print("Results saved to: " + gcs_output)
-
-    sc.stop()
-
-    sc.stop()
-
-    sc.stop()
+    print(">>> Total files processed: {0}".format(len(results)))
+    print(">>> Results saved to: " + gcs_output)
+    print(">>> View results at: https://console.cloud.google.com/storage/browser/" + output_bucket.replace("gs://", ""))
 
     sc.stop()
