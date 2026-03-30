@@ -63,10 +63,15 @@ pipeline {
                             -- https://github.com/haotiany-cmu-F25/mayavi.git gs://$BUCKET_NAME
 
                         echo "===== HADOOP JOB COMPLETE ====="
-                        echo "Results file: gs://$BUCKET_NAME/hadoop_results.txt"
-                        echo "View results: https://console.cloud.google.com/storage/browser/$BUCKET_NAME"
-                        echo "Or run: gsutil cat gs://$BUCKET_NAME/hadoop_results.txt"
+                        echo "Downloading results..."
+                        gsutil cp gs://$BUCKET_NAME/hadoop_results.txt hadoop_results.txt
+                        echo "Results downloaded as hadoop_results.txt"
                     '''
+                }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'hadoop_results.txt', fingerprint: true
                 }
             }
         }
