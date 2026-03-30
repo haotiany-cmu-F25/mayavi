@@ -6,6 +6,9 @@ import shutil
 from pyspark import SparkContext
 
 if __name__ == "__main__":
+    # Suppress verbose Spark/Hadoop INFO logs
+    import logging
+    logging.getLogger("py4j").setLevel(logging.WARN)
     repo_url = (
         sys.argv[1]
         if len(sys.argv) > 1
@@ -43,6 +46,7 @@ if __name__ == "__main__":
     # Step 3: Use Spark to distribute and process the data (MapReduce)
     print(">>> Step 3: Running Spark MapReduce job...")
     sc = SparkContext(appName="RepoLineCount")
+    sc.setLogLevel("WARN")
 
     # Distribute file data across the 3 worker nodes
     rdd = sc.parallelize(file_data, numSlices=min(len(file_data), 30))
@@ -74,6 +78,9 @@ if __name__ == "__main__":
     subprocess.run(["gsutil", "cp", result_file, gcs_output], check=True)
     print(">>> Total files processed: {0}".format(len(results)))
     print(">>> Results saved to: " + gcs_output)
-    print(">>> View results at: https://console.cloud.google.com/storage/browser/" + output_bucket.replace("gs://", ""))
+    print(
+        ">>> View results at: https://console.cloud.google.com/storage/browser/"
+        + output_bucket.replace("gs://", "")
+    )
 
     sc.stop()
