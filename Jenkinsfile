@@ -48,24 +48,65 @@ pipeline {
                         REGION="us-central1"
                         CLUSTER_NAME="project1-hadoop-cluster"
                         BUCKET_NAME="${PROJECT_ID}-hadoop-repo-data"
+                        REPO_URL="https://github.com/haotiany-cmu-F25/mayavi.git"
 
                         echo "Creating bucket (if not exists)..."
                         gcloud storage buckets create gs://$BUCKET_NAME --project=$PROJECT_ID --location=$REGION || true
 
-                        echo "Uploading PySpark script..."
-                        gsutil cp mapreduce_line_count.py gs://$BUCKET_NAME/mapreduce_line_count.py
+                        echo "Step 1: Cloning target repository..."
+                        rm -rf /tmp/mayavi_repo
+                        git clone --depth 1 "$REPO_URL" /tmp/mayavi_repo
+                        rm -rf /tmp/mayavi_repo/.git
 
-                        echo "Submitting Hadoop job..."
-                        gcloud dataproc jobs submit pyspark gs://$BUCKET_NAME/mapreduce_line_count.py \
+                        echo "Step 2: Pre-processing files into input.txt..."
+                        cd /tmp/mayavi_repo
+                        > /tmp/input.txt
+                        find . -type f | while IFS= read -r filepath; do
+                            relpath="${filepath#./}"
+                            while IFS= read -r line || [ -n "$line" ]; do
+                                printf '%s\t%s\n' "$relpath" "$line" >> /tmp/input.txt
+                            done < "$filepath" 2>/dev/null || true
+                        done
+                        cd -
+
+                        FILE_COUNT=$(find /tmp/mayavi_repo -type f | wc -l)
+                        LINE_COUNT=$(wc -l < /tmp/input.txt)
+                        echo "Pre-processed $FILE_COUNT files into $LINE_COUNT lines"
+
+                        echo "Step 3: Uploading input and scripts to GCS..."
+                        gsutil cp /tmp/input.txt gs://$BUCKET_NAME/input/input.txt
+                        gsutil cp mapper.py gs://$BUCKET_NAME/scripts/mapper.py
+                        gsutil cp reducer.py gs://$BUCKET_NAME/scripts/reducer.py
+
+                        echo "Step 4: Cleaning previous output (if any)..."
+                        gsutil rm -r gs://$BUCKET_NAME/output/ 2>/dev/null || true
+
+                        echo "Step 5: Submitting Hadoop Streaming job..."
+                        gcloud dataproc jobs submit hadoop \
                             --cluster=$CLUSTER_NAME \
                             --region=$REGION \
                             --project=$PROJECT_ID \
-                            -- https://github.com/haotiany-cmu-F25/mayavi.git gs://$BUCKET_NAME
+                            --jar=file:///usr/lib/hadoop/hadoop-streaming.jar \
+                            -- \
+                            -input gs://$BUCKET_NAME/input/input.txt \
+                            -output gs://$BUCKET_NAME/output \
+                            -mapper "python3 mapper.py" \
+                            -reducer "python3 reducer.py" \
+                            -file gs://$BUCKET_NAME/scripts/mapper.py \
+                            -file gs://$BUCKET_NAME/scripts/reducer.py
 
-                        echo "===== HADOOP JOB COMPLETE ====="
-                        echo "Downloading results..."
-                        gsutil cp gs://$BUCKET_NAME/hadoop_results.txt hadoop_results.txt
-                        echo "Results downloaded as hadoop_results.txt"
+                        echo "===== HADOOP STREAMING JOB COMPLETE ====="
+
+                        echo "Step 6: Downloading results..."
+                        echo "============================================================" > hadoop_results.txt
+                        echo "HADOOP MAPREDUCE RESULTS:" >> hadoop_results.txt
+                        echo "============================================================" >> hadoop_results.txt
+                        gsutil cat gs://$BUCKET_NAME/output/part-* >> hadoop_results.txt
+                        echo "============================================================" >> hadoop_results.txt
+                        echo "Total files: $FILE_COUNT" >> hadoop_results.txt
+
+                        echo "Results saved to hadoop_results.txt"
+                        gsutil cp hadoop_results.txt gs://$BUCKET_NAME/hadoop_results.txt
                     '''
                 }
             }
