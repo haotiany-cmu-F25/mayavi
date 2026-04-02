@@ -87,13 +87,12 @@ pipeline {
                             --region=$REGION \
                             --project=$PROJECT_ID \
                             --jar=file:///usr/lib/hadoop/hadoop-streaming.jar \
+                            --files=gs://$BUCKET_NAME/scripts/mapper.py,gs://$BUCKET_NAME/scripts/reducer.py \
                             -- \
                             -input gs://$BUCKET_NAME/input/input.txt \
                             -output gs://$BUCKET_NAME/output \
                             -mapper "python3 mapper.py" \
-                            -reducer "python3 reducer.py" \
-                            -file gs://$BUCKET_NAME/scripts/mapper.py \
-                            -file gs://$BUCKET_NAME/scripts/reducer.py
+                            -reducer "python3 reducer.py"
 
                         echo "===== HADOOP STREAMING JOB COMPLETE ====="
 
