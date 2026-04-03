@@ -63,10 +63,18 @@ pipeline {
                         > /tmp/input.txt
                         find . -type f | while IFS= read -r filepath; do
                             relpath="${filepath#./}"
-                            while IFS= read -r line || [ -n "$line" ]; do
-                                printf '%s\t%s\n' "$relpath" "$line" >> /tmp/input.txt
-                            done < "$filepath" 2>/dev/null || true
-                        done
+                            case "$relpath" in
+                                *.py|*.pyx|*.pxd|*.txt|*.rst|*.md|*.cfg|*.ini|*.yml|*.yaml|*.json|*.xml|*.html|*.css|*.js|*.sh|*.bat|*.c|*.h|*.cpp|*.hpp|*.java|*.toml|*.in|*.spec|*.csv|*.tex|*.bib|*.el|*.vim|*.conf|*.gitignore|*.dockerignore|*.editorconfig|*.flake8|*.pylintrc|Makefile|Makefile*|Dockerfile|LICENSE*|MANIFEST*|README*|CHANGES*|THANKS*|AUTHORS*|*.dox|*.cmake|*.f|*.f90|*.r|*.R)
+                                    while IFS= read -r line || [ -n "$line" ]; do
+                                        printf '%s\t%s\n' "$relpath" "$line"
+                                    done < "$filepath" 2>/dev/null || true
+                                    ;;
+                                *)
+                                    # Binary/unknown files: count 1 line to indicate presence
+                                    printf '%s\t(binary)\n' "$relpath"
+                                    ;;
+                            esac
+                        done > /tmp/input.txt
                         cd -
 
                         FILE_COUNT=$(find /tmp/mayavi_repo -type f | wc -l)
@@ -106,6 +114,12 @@ pipeline {
 
                         echo "Results saved to hadoop_results.txt"
                         gsutil cp hadoop_results.txt gs://$BUCKET_NAME/hadoop_results.txt
+
+                        echo ""
+                        echo "===== VIEW RESULTS ====="
+                        echo "GCS Console: https://console.cloud.google.com/storage/browser/$BUCKET_NAME?project=$PROJECT_ID"
+                        echo "Direct file: https://storage.cloud.google.com/$BUCKET_NAME/hadoop_results.txt"
+                        echo "========================"
                     '''
                 }
             }
